@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 • Irrigação Inteligente</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f2f6f4;color:#17231d}
+header{background:#126b45;color:white;padding:20px 16px;border-radius:0 0 24px 24px}
+header h1{margin:0 0 5px;font-size:24px} header p{margin:0;opacity:.85}
+.container{max-width:700px;margin:auto;padding:15px}
+.card{background:white;border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 3px 12px #00000012}
+.title{font-size:18px;font-weight:bold;margin-bottom:14px}
+.status{display:flex;align-items:center;gap:12px}
+.dot{width:16px;height:16px;border-radius:50%;background:#999}
+.dot.on{background:#18a558;box-shadow:0 0 10px #18a558}
+.big{font-size:42px;font-weight:bold}
+.meter{height:18px;background:#e5ebe7;border-radius:20px;overflow:hidden;margin:12px 0}
+.bar{height:100%;width:48%;background:#168c5a;border-radius:20px;transition:.3s}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:center;margin:12px 0}
+button,select,input{width:100%;padding:12px;border-radius:11px;border:1px solid #ccd7d1;font-size:15px}
+button{border:0;background:#126b45;color:white;font-weight:bold;cursor:pointer}
+button.secondary{background:#e8f0ec;color:#126b45}
+button.danger{background:#b73535}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{font-size:13px;font-weight:bold;display:block;margin-bottom:6px}
+.value{font-size:13px;color:#64726a}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{text-align:left;padding:8px;border-bottom:1px solid #edf1ee}
+.badge{padding:5px 9px;border-radius:20px;background:#e8f5ee;color:#126b45;font-weight:bold}
+.hidden{display:none}
+.note{font-size:12px;color:#66736c;line-height:1.45}
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>🌱 Irrigação Inteligente</h1>
+    <p>ESP32 • Pimentão • Bomba automática</p>
+  </div>
+</header>
+
+<div class="container">
+
+<div class="card">
+  <div class="title">Monitoramento</div>
+  <div class="status">
+    <span id="dot" class="dot"></span>
+    <div>
+      <div id="pumpStatus">Bomba desligada</div>
+      <div class="value">Sensor capacitivo conectado</div>
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <div class="value">Umidade atual</div>
+      <div class="big"><span id="humidity">48</span>%</div>
+    </div>
+    <div style="text-align:right">
+      <div class="value">Leitura bruta</div>
+      <strong id="raw">1780</strong>
+    </div>
+  </div>
+  <div class="meter"><div id="bar" class="bar"></div></div>
+  <div class="row">
+    <span>Última leitura: <b id="last">agora</b></span>
+    <span class="badge" id="modeBadge">Sensor</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="title">🚿 Controle da bomba</div>
+  <button onclick="irrigar()">💧 IRRIGAR AGORA</button>
+  <div class="grid" style="margin-top:10px">
+    <button class="secondary" onclick="togglePump()">Ligar bomba</button>
+    <button class="danger" onclick="desligar()">Desligar bomba</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="title">⚙️ Modo de irrigação</div>
+  <label>Escolha como o ESP32 vai controlar a bomba</label>
+  <select id="mode" onchange="changeMode()">
+    <option value="sensor">Sensor capacitivo</option>
+    <option value="programado">Programado</option>
+    <option value="hibrido">Híbrido</option>
+  </select>
+
+  <div id="sensorSettings">
+    <div class="grid" style="margin-top:14px">
+      <div><label>Ligar abaixo de (%)</label><input id="minHum" type="number" value="40"></div>
+      <div><label>Desligar acima de (%)</label><input id="maxHum" type="number" value="55"></div>
+    </div>
+  </div>
+
+  <div id="scheduleSettings" class="hidden">
+    <div class="grid" style="margin-top:14px">
+      <div><label>Horário 1</label><input type="time" value="07:00"></div>
+      <div><label>Duração (segundos)</label><input type="number" value="30"></div>
+      <div><label>Horário 2</label><input type="time" value="17:00"></div>
+      <div><label>Duração (segundos)</label><input type="number" value="30"></div>
+    </div>
+  </div>
+
+  <div style="margin-top:14px">
+    <label>Tempo máximo por ciclo (segundos)</label>
+    <input type="number" value="30">
+  </div>
+  <button style="margin-top:12px" onclick="salvar()">Salvar configuração</button>
+</div>
+
+<div class="card">
+  <div class="title">🧪 Calibração do sensor capacitivo</div>
+  <p class="note">Faça a calibração uma vez. O ESP32 gravará os valores para converter a leitura bruta em porcentagem.</p>
+  <div class="grid">
+    <button class="secondary" onclick="calibrarSeco()">Calibrar SOLO SECO</button>
+    <button class="secondary" onclick="calibrarUmido()">Calibrar SOLO ÚMIDO</button>
+  </div>
+  <div class="row">
+    <span>Valor seco: <b id="dry">2600</b></span>
+    <span>Valor úmido: <b id="wet">1000</b></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="title">📊 Histórico</div>
+  <table>
+    <thead><tr><th>Hora</th><th>Umidade</th><th>Bomba</th></tr></thead>
+    <tbody id="history">
+      <tr><td>15:40</td><td>48%</td><td>Não</td></tr>
+      <tr><td>15:30</td><td>46%</td><td>Não</td></tr>
+      <tr><td>15:20</td><td>41%</td><td>Sim</td></tr>
+      <tr><td>15:10</td><td>37%</td><td>Sim</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="title">📡 ESP32</div>
+  <div class="row"><span>Conexão</span><span class="badge">ONLINE</span></div>
+  <div class="row"><span>IP</span><b>192.168.4.1</b></div>
+  <p class="note">Nesta demonstração os valores são simulados. Na versão real, a página receberá a leitura diretamente do ESP32 e acionará o relé da bomba.</p>
+</div>
+
+</div>
+
+<script>
+let pump=false, hum=48, mode='sensor';
+
+function render(){
+ document.getElementById('humidity').textContent=hum;
+ document.getElementById('raw').textContent=Math.round(2600-(hum/100)*(2600-1000));
+ document.getElementById('bar').style.width=hum+'%';
+ document.getElementById('dot').className='dot '+(pump?'on':'');
+ document.getElementById('pumpStatus').textContent=pump?'Bomba ligada':'Bomba desligada';
+}
+function irrigar(){
+ pump=true; render();
+ setTimeout(()=>{pump=false; render();},3000);
+ alert('Demonstração: bomba ligada por 3 segundos.');
+}
+function togglePump(){pump=!pump;render();}
+function desligar(){pump=false;render();}
+function changeMode(){
+ mode=document.getElementById('mode').value;
+ document.getElementById('modeBadge').textContent=mode==='sensor'?'Sensor':mode==='programado'?'Programado':'Híbrido';
+ document.getElementById('sensorSettings').classList.toggle('hidden',mode==='programado');
+ document.getElementById('scheduleSettings').classList.toggle('hidden',mode==='sensor');
+}
+function salvar(){alert('Configuração salva (demo).');}
+function calibrarSeco(){
+ document.getElementById('dry').textContent=document.getElementById('raw').textContent;
+ alert('Solo seco calibrado com o valor atual.');
+}
+function calibrarUmido(){
+ document.getElementById('wet').textContent=document.getElementById('raw').textContent;
+ alert('Solo úmido calibrado com o valor atual.');
+}
+setInterval(()=>{
+ hum=Math.max(20,Math.min(80,hum+(Math.random()>.5?1:-1)));
+ render();
+},3000);
+render();
+</script>
+</body>
+</html>
